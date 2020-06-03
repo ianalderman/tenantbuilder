@@ -1,0 +1,66 @@
+{
+        "upnSuffix": "@egunicorn.co.uk",
+        "Department": [
+            {
+            "Name": "Digital",
+            "Leadership": [
+                {
+                    "GivenName": "Anvi",
+                    "Surname": "Rao",
+                    "Title": "Head of Digitial",
+                    "ManagedBy": ""
+                },
+                {
+                    "GivenName": "Mateo",
+                    "Surname": "Garcia",
+                    "Title": "Lead Architect",
+                    "ManagedBy": "anvi.rao"
+                },
+                {
+                    "GivenName": "Graham",
+                    "Surname": "Johnson",
+                    "Title": "Product Owner - Jaguar",
+                    "ManagedBy": "anvi.rao"
+                },
+                {
+                    "GivenName": "Susan",
+                    "Surname": "Kemp",
+                    "Title": "Product Owner - Tiger",
+                    "ManagedBy": "anvi.rao"
+                }
+            ],
+            "ProductTeam": [
+                {
+                    "Name": "Jaguar",
+                    "Owner": "graham.johnson",
+                    "Members": [
+                        {
+                            "GivenName": "An",
+                            "Surname": "Li",
+                            "Title": "Engineer",
+                            "ManagedBy": "graham.johnson"
+                        }
+                    ]
+                },
+                {
+                    "Name": "Tiger",
+                    "Owner": "susan.kemp",
+                    "Members": [
+                        {
+                            "GivenName": "Jim",
+                            "Surname": "Hill",
+                            "Title": "Architect",
+                            "ManagedBy": "susan.kemp"
+                        },
+                        {
+                            "GivenName": "Lucy",
+                            "Surname": "Hargreaves",
+                            "Title": "Engineer",
+                            "ManagedBy": "susan.kemp"
+                        }
+                    ]
+                }
+            ]
+        }            
+        ]
+}
