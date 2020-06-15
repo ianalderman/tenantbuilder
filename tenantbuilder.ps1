@@ -1,6 +1,12 @@
 
 #TODO B2B
 #TODO Conditional Access Policies
+#TODO Add JSON as script parameter
+#TODO Add flags as parameter default run all unless flags list which to run
+#TODO Add Breakglass accounts with alerts for logons
+#TODO Random password generator, one per run echo out at the end to replace the stored one in the code
+#TODO for all items check if exist if then get ids and carry on rather than erroring and failing to pass info
+#Cload App Security integration for alerts
 $DebugPreference = "Continue"
 
 #Import-Module -Name AzureADPreview
@@ -190,9 +196,15 @@ function loadApp() {
         $ReplyURI = "https://localhost:1234"
 
         $appRegistration = New-AzureADApplication -DisplayName $App.Name -IdentifierUris $App.URI -ReplyUrls @($ReplyURI)
-        $eaApp= Get-AzureADApplication -ObjectId $appRegistration.ObjectId
+        $eaApp = Get-AzureADApplication -ObjectId $appRegistration.ObjectId
         addOutEntry -ObjectType "app" -ObjectId $appRegistration.ObjectId -Name $appRegistration.DisplayName
 
+        #Add a SPN to make it the application an Enterprise Application so we can assign to access package
+        $spnDisplayName = $app.DisplayName + " SPN"
+        $spn = New-AzureADServicePrincipal -AppId $eaApp.AppId
+        addOutEntry -ObjectType"spn" -ObjectId $spn.ObjectId -Name $spnDisplayName
+        write-host "*** SPN Created for App $($app.DisplayName):" $spn
+        #Loop through and create the roles
         ForEach($role in $App.Role) {
             $role.Name = $role.Name.Replace(" ", "")
             $newRole = CreateAppRole -Name $role.Name -Description $role.Description
@@ -202,10 +214,7 @@ function loadApp() {
         #Apply the roles to the application
         Set-AzureADApplication -ObjectId $eaApp.ObjectId -AppRoles $eaApp.AppRoles
 
-        #Add a SPN to make it the application an Enterprise Application so we can assign to access package
-        $spnDisplayName = $app.DisplayName + " SPN"
-        $spn = New-AzureADServicePrincipal -AppId $eaApp.AppId
-        addOutEntry -ObjectType"spn" -ObjectId $spn.ObjectId -Name $spnDisplayName
+        
     }
 }
 
@@ -263,104 +272,299 @@ function loadEntitlementManagement() {
     #TODO AccessCatalog App
     #TODO AccessCatalog SharePoint
     #TODO AccessPackage
-    ForEach ($catalogue in $EntitlementManagement.Catalogues) {
-    #Create the catalogue
-        $body = @{
-            displayName = $catalogue.Name
-            description = $catalogue.Description
-            isExternallyVisible = $catalogue.ExternallyAvailable
-        } | ConvertTo-JSON
+    #Ensure the signed in user has PIM rights
+    #TODO Clean this up check and if not then add
+    $SignedInUser = Get-AzADUser -UserPrincipalName $accountId
+    Add-AzureADDirectoryRoleMember -ObjectId 083a4064-745c-4d9a-a523-228602931e47  -RefObjectId $SignedInUser.Id
 
-        $catalog = invokeGraphAPI -Call "beta/identityGovernance/entitlementManagement/accessPackageCatalogs" -Body $body -Method "POST"
+    loadEntitlementManagementCatalogues -Catalogues $EntitlementManagement.Catalogues
+    loadEntitlementManagementAccessPackages -AccessPackages $EntitlementManagement.AccessPackages
 
-        addOutEntry -ObjectType "catalogue" -ObjectId $catalog.ObjectId -Name $catalog.Name
+    #$catalogs = invokeGraphAPI -call "beta/identityGovernance/entitlementManagement/accessPackageCatalogs" -Body "" -Method "GET" | ConvertFrom-Json
+    #$accessPackagePolicies = $organisation.AccessPackagePolicies | ConvertFrom-Json
 
-        #$groupsToAdd = $catalog.Groups
-        ForEach ($group in $catalogue.groups) {
-            Write-Host "Processing Groups"
-            $grp = Get-AzureADGroup -SearchString $group
+    Write-Host "catalogs:" $catalogs
+    
 
-            $grpBody = @{
-                catalogId = $catalog.Id
-                requestType = "AdminAdd"
-                justification = ""
-                accessPackageResource = @{
-                    displayName = $grp.DisplayName
-                    description = $grp.Description
-                    resourceType = "Group"
-                    originId = $grp.ObjectId
-                    originSystem = "AadGroup"
-                }
-            } | ConvertTo-Json
+}
 
-            $catalogGroup = invokeGraphAPI -Call "beta/identityGovernance/entitlementManagement/accessPackageResourceRequests" -Body $grpBody -Method "POST"
+function loadEntitlementManagementCatalogues($Catalogues) {
+    ForEach ($catalogue in $Catalogues) {
+        #Create the catalogue
+            $body = @{
+                displayName = $catalogue.Name
+                description = $catalogue.Description
+                isExternallyVisible = $catalogue.ExternallyAvailable
+            } | ConvertTo-JSON
+    
+            $catalog = invokeGraphAPI -Call "beta/identityGovernance/entitlementManagement/accessPackageCatalogs" -Body $body -Method "POST"
+    
+            addOutEntry -ObjectType "catalogue" -ObjectId $catalog.Id -Name $catalog.Name
+    
+            #$groupsToAdd = $catalog.Groups
+            ForEach ($group in $catalogue.groups) {
+                Write-Host "Processing Groups"
+                $grp = Get-AzureADGroup -SearchString $group
+    
+                $grpBody = @{
+                    catalogId = $catalog.Id
+                    requestType = "AdminAdd"
+                    justification = ""
+                    accessPackageResource = @{
+                        displayName = $grp.DisplayName
+                        description = $grp.Description
+                        resourceType = "Group"
+                        originId = $grp.ObjectId
+                        originSystem = "AadGroup"
+                    }
+                } | ConvertTo-Json
+    
+                $catalogGroup = invokeGraphAPI -Call "beta/identityGovernance/entitlementManagement/accessPackageResourceRequests" -Body $grpBody -Method "POST"
+            }
+            
+            ForEach ($app in $catalogue.Applications) {
+                Write-Host "Processing App $($app)"
+                $app = $app.Replace("'", "''")
+                $appRegistration = Get-AzureADApplication -Filter "DisplayName eq '$($app)'"
+                $appSPN = Get-AzureADServicePrincipal -SearchString "$($app)"
+                Write-Host "*** App SPN: $($appSPN) ***"
+                #$app
+                $appBody = @{
+                    catalogId = $catalog.Id
+                    requestType = "AdminAdd"
+                    justification = ""
+                    accessPackageResource = @{
+                        displayName = $app
+                        description = "AppId: $($appRegistration.AppId)"
+                        resourceType = "Application"
+                        originId = $appSPN.ObjectId
+                        originSystem = "AadApplication"
+                    }
+                } | ConvertTo-Json
+                #$appBody
+                $catalogapp = invokeGraphAPI -Call "beta/identityGovernance/entitlementManagement/accessPackageResourceRequests" -Body $appBody -Method "POST"
+            }
+    
+            ForEach ($site in $catalogue.Sites) {
+                Write-Host "Processing Sites"
+                $siteBody = @{
+                    catalogId = $catalog.Id
+                    requestType = "AdminAdd"
+                    justification = ""
+                    accessPackageResource = @{
+                        displayName = $site.Name
+                        description = $site.Url
+                        resourceType = "SharePoint Online Site"
+                        url = $site.Url
+                        originId = $site.Url
+                        originSystem = "SharePointOnline"
+                    }
+                } | ConvertTo-Json
+                #$appBody
+                $catalogSite = invokeGraphAPI -Call "beta/identityGovernance/entitlementManagement/accessPackageResourceRequests" -Body $siteBody -Method "POST"
+            }
+        }
+}
+
+function loadEntitlementManagementAccessPackages($AccessPackages) {
+    ForEach($accessPkg in $AccessPackages) {
+        #Need to first create access package
+        #Then add a scope request to entry in the catalogue https://docs.microsoft.com/en-us/graph/api/accesspackage-post-accesspackageresourcerolescopes?view=graph-rest-beta&tabs=http
+        $catalogs = invokeGraphAPI -call "beta/identityGovernance/entitlementManagement/accessPackageCatalogs" -Body "" -Method "GET" | ConvertFrom-Json
+        #Write-host "Catalogs: " $catalogs
+        $catalogs = $catalogs.value 
+        Write-host "Catalogs: " $catalogs
+        Write-host "Pkg catalogue: " $accessPkg.Catalogue
+        $catalogs = $catalogs | Where-Object {$_.displayName -eq "$($accessPkg.Catalogue)"}
+        Write-host "Catalog post where : " $catalogs
+
+        $pkgBody = @{
+            catalogId = "$($catalogs.Id)"
+            displayName = "$($accessPkg.Name)"
+            description = "$($accessPkg.description)"
+        } | ConvertTo-Json
+
+        write-host "Pkgbody: " $pkgBody
+        $accessPkgResponse = invokeGraphAPI -call "beta/identityGovernance/entitlementManagement/accessPackages" -Body $pkgBody -Method "POST"
+
+        write-host "Pkg response: " $accessPkgResponse
+        #for fuller policy example look here https://docs.microsoft.com/en-us/graph/api/accesspackageassignmentpolicy-post?view=graph-rest-beta&tabs=http
+
+        #Load the access package policy into an object to work on
+        #$accessPackagePolicyDef = $accessPackagePolicies | Where-Obbject {$_.Name -eq $accessPkg.PolicyName}
+        #$accessPackagePolicy = $accessPackagePolicies | Where-Object {$_.PolicyName -eq $accessPkg.displayName}
+        #Add in the id of the newly created package
+        $accessPkg | Add-Member -MemberType NoteProperty -Name "id" -Value $accessPkgResponse.id        
+        #Get a list of resources in the catalog
+        $catalogResources = invokeGraphAPI -call "beta/identityGovernance/entitlementManagement/accessPackageCatalogs/$($catalogs.Id)/accessPackageResources" -Body "" -Method "GET" | ConvertFrom-Json
+        $catalogResources = $catalogResources.value
+
+        Foreach($pkgGroup in $accessPkg.Groups) {
+            #$groupCatalogEntry = $catalogResources | Where-Object {$_.DisplayName -eq "$($pkgGroup.Name)" -and $_.originSystem -eq "AadGroup"}
+            ##Get a list of resource roles in the catalog
+            #$groupResourceRoles = invokeGraphAPI -call "beta/identityGovernance/entitlementManagement/accessPackageCatalogs/$($catalogs.Id)/accessPackageResourceRoles?`$filter=(originSystem+eq+%27AadGroup%27+and+accessPackageResource/id+eq+%27$($groupCatalogEntry.Id)%27)&`$expand=accessPackageResource" -body "" -Method "GET" | ConvertFrom-JSON
+            #$groupResourceRoles = $groupResourceRoles.value
+            #$groupRoleToAdd = $groupResourceRoles | Where-Object {$_.displayName -eq "$($pkgGroup.Role)"}
+
+            #$pgb = @{
+            #    accessPackageResourceRole = @{
+            #        originId = $groupRoleToAdd.originId
+            #        displayName = $groupRoleToAdd.dsiplayName
+            #        originSystem = $groupRoleToAdd.originSystem
+            #        accessPackageResource = @{
+            #            id = $groupCatalogEntry.id
+            #            resourceType = $groupCatalogEntry.resourceType
+            #            originId = $groupCatalogEntry.originId
+            #            originSystem = $groupCatalogEntry.originSystem
+            #        }
+            #    }
+            #    accessPackageResourceScope = @{
+            #        originId = $groupCatalogEntry.originId
+            #        originSystem = $groupCatalogEntry.originSystem
+            #    }
+            #} | ConvertTo-Json
+            $groupRole = buildAccessPackageRole -packageName $pkgGroup.Name -packageRole $pkgGroup.Role -resourceType "AadGroup" -catalogId $catalogs.Id -catalogResourcesList $catalogResources
+            #$addGroupResponse = invokeGraphAPI -Call "beta/identityGovernance/entitlementManagement/accessPackages/$($accessPkgResponse.id)/accessPackageResourceRoleScopes" -Body $pgb -Method "POST"
+            $addGroupResponse = invokeGraphAPI -Call "beta/identityGovernance/entitlementManagement/accessPackages/$($accessPkgResponse.id)/accessPackageResourceRoleScopes" -Body $groupRole -Method "POST"
+        }
+
+        Foreach($pkgApp in $accessPkg.Applications) {
+            $appRole = buildAccessPackageRole -packageName $pkgApp.Name -packageRole $pkgApp.Role -resourceType "AadApplication" -catalogId $catalogs.Id -catalogResourcesList $catalogResources
+            $addAppResponse = invokeGraphAPI -Call "beta/identityGovernance/entitlementManagement/accessPackages/$($accessPkgResponse.id)/accessPackageResourceRoleScopes" -Body $appRole -Method "POST"
+            Write-Host "aadAppResponse: " $addAppResponse
+        }
+
+
+        loadAccessEntitlementManagementAccessPackagePolicies -AccessPackage $accessPkg
+    }
+}
+
+function buildAccessPackageRole($packageName, $packageRole, $resourceType, $catalogId, $catalogResourcesList) {
+    write-host "Package Name: $($packageName), Package Role: $($packageRole), Resource Type: $($resourceType), Cat Id: $($catalogId), Cat Res: $($catalogResourcesList)"
+    $catalogEntry = $catalogResourcesList | Where-Object {$_.DisplayName -eq "$($packageName)" -and $_.originSystem -eq "$($resourceType)"}
+
+    $resourceRole = invokeGraphAPI -call "beta/identityGovernance/entitlementManagement/accessPackageCatalogs/$($catalogId)/accessPackageResourceRoles?`$filter=(originSystem+eq+%27$($resourceType)%27+and+accessPackageResource/id+eq+%27$($catalogEntry.Id)%27)&`$expand=accessPackageResource" -body "" -Method "GET" | ConvertFrom-JSON
+    $resourceRole = $resourceRole.value
+    #write-host "Resource Role:" $resourceRole 
+    $packagerole = $packageRole.Replace(" ","")
+    $resourceRoleToAdd = $resourceRole | Where-Object {$_.DisplayName -eq "$($packageRole)"}
+
+    $apr = @{
+        accessPackageResourceRole = @{
+            originId = $resourceRoleToAdd.originId
+            displayName = $resourceRoleToAdd.displayName
+            originSystem = $resourceRoleToAdd.originSystem
+            accessPackageResource = @{
+                id = $catalogEntry.Id
+                resourceType = $catalogEntry.resourceType
+                originId = $catalogEntry.originId
+                originSystem = $catalogEntry.originSystem
+            }
+        }
+        accessPackageResourceScope = @{
+            originId = $catalogEntry.originId
+            originSystem = $catalogEntry.originSystem
+        }
+    } | ConvertTo-Json
+
+    return $apr
+}
+
+function loadAccessEntitlementManagementAccessPackagePolicies($accessPackage) {
+    Write-Host "Processing Access Policies for Package: " $accessPackage
+    #Load the access package policy into an object to work on
+    $accessPackagePolicy = $organisation.entitlementmanagement.accesspackagepolicies | Where-Object {$_.displayName -eq "$($accessPackage.PolicyName)"}
+    Write-Host "Loaded Policy Def:" $accessPackagePolicy
+    #Add in the id of the newly created package
+    $accessPackagePolicy | Add-Member -MemberType NoteProperty -Name "accessPackageId" -Value $accessPackage.id
+
+    #Populate the GUIDs for the groups and users listed in the policy
+    if ($accessPackagePolicy.requestorSettings.allowedRequestors) {
+        $accessPackagePolicy.requestorSettings.allowedRequestors = markupoDataEntries -Object $accessPackagePolicy.requestorSettings.allowedRequestors
+    }
+    
+    Foreach($stage in $accessPackagePolicy.requestApprovalSettings.approvalStages) {
+        if ($stage.primaryApprovers) {
+            write-host "*** Primary Approvers ***" $stasge.primaryApprovers
+            $stage.primaryApprovers = markupoDataEntries -Object $stage.primaryApprovers
         }
         
-        ForEach ($app in $catalogue.Applications) {
-            Write-Host "Processing Apps"
-            $app = $app.Replace("'", "''")
-            $appRegistration = Get-AzureADApplication -Filter "DisplayName eq '$($app)'"
-            #$app
-            $appBody = @{
-                catalogId = $catalog.Id
-                requestType = "AdminAdd"
-                justification = ""
-                accessPackageResource = @{
-                    displayName = $app
-                    description = "AppId: $($appRegistration.AppId)"
-                    resourceType = "Application"
-                    originId = $appRegistration.ObjectId
-                    originSystem = "AadApplication"
-                }
-            } | ConvertTo-Json
-            #$appBody
-            $catalogapp = invokeGraphAPI -Call "beta/identityGovernance/entitlementManagement/accessPackageResourceRequests" -Body $appBody -Method "POST"
-        }
-
-        ForEach ($site in $catalogue.Sites) {
-            Write-Host "Processing Sites"
-            $siteBody = @{
-                catalogId = $catalog.Id
-                requestType = "AdminAdd"
-                justification = ""
-                accessPackageResource = @{
-                    displayName = $site.Name
-                    description = $site.Url
-                    resourceType = "SharePoint Online Site"
-                    url = $site.Url
-                    originId = $site.Url
-                    originSystem = "SharePointOnline"
-                }
-            } | ConvertTo-Json
-            #$appBody
-            $catalogSite = invokeGraphAPI -Call "beta/identityGovernance/entitlementManagement/accessPackageResourceRequests" -Body $siteBody -Method "POST"
+        if ($stage.escalationApprovers) {
+            $stage.escalationApprovers = markupoDataEntries -Object $stage.escalationApprovers
         }
     }
 
-    $catalogs = invokeGraphAPI -call "beta/identityGovernance/entitlementManagement/accessPackageCatalogs" -Body "" -Method "GET" | ConvertFrom-Json
+    if ($accessPackagePolicy.accessReviewSettings.reviewers) {
+        $accessPackagePolicy.accessReviewSettings.reviewers = markupoDataEntries -Object $accessPackagePolicy.accessReviewSettings.reviewers
+    }
 
-    Write-Host "catalogs:" $catalogs
-    ForEach($accessPkg in $EntitlementManagement.AccessPackages) {
-        #Need to first create access package
-        #Then add a scope request to entry in the catalogue https://docs.microsoft.com/en-us/graph/api/accesspackage-post-accesspackageresourcerolescopes?view=graph-rest-beta&tabs=http
-        $catalog = $catalogs | Where-Object ($_.DisplayName -eq $accessPkg.Catalogue)
+    #Access Review dates must start today or later check and update
+    if ($accessPackagePolicy.accessReviewSettings) {
+        $startDate = [DateTime]$accessPackagePolicy.accessReviewSettings.startDateTime
+        $today = Get-Date
 
-        $pkgBody = @{
-            catalogId = "$($catalog.Id)"
-            displayName = "$($accessPkg.Name)"
-            description = "$($accessPkg.description)"
+        if ($startDate -lt $today) {
+            $accessPackagePolicy.accessReviewSettings.startDateTime = $today.ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ss.fffZ")
+            Write-Warning "Access Review Start Date for package $($accessPackage.DisplayName) had illegal start date (less than today), this has been defaulted to today's date"
         }
-
-        $accessPkgResponse = invokeGraphAPI -call "beta/identityGovernance/entitlementManagement/accessPackages" -Body $pkgBody -Method "POST"
-
-        Foreach($pkgGroup in $accessPkg.Groups) {
-
-            $pgb = @{
-                
+    }
+    
+    $accessPackagePolicy = $accessPackagePolicy | ConvertTo-Json -Depth 100
+    
+    $response = invokeGraphAPI -Call "beta/identityGovernance/entitlementManagement/accessPackageAssignmentPolicies" -Body $accessPackagePolicy -Method "POST"
+    
+    Write-Host "Policy response:" $response
+    #Find group references and based on description (= group name) locate and replace Ids
+    #For each requestor find type then description then replace the id
+    #ForEach ($requestor in $accessPackagePolicy.requestorSettings.allowedRequestors) {
+    #    switch ($requestor.'@odata.type') {
+    #        "#microsoft.graph.groupMembers" {
+    #            write-host "looking up group"
+    #            $grp =  Get-AzureADGroup -SearchString $requestor.description
+    #            $requestor.id = $grp.ObjectId  
+    #        }
+    #        "#microsoft.graph.singleUser" {
+    #            write-host "looking up user"
+    #            $usr = Get-AzureADUser - SearchString $requestor.description
+    #            $requestor.id = $usr.ObjectId
+    #            $requestor.description = $user.DisplayName
+    #            break
+    #        }
+    #        "#microsoft.graph.requestorManager" {
+    #            break
+    #        }
+    #        default {
+    #           Write-host "Unknown odata.type" $requestor.'@odata.type'
+    #            break
+    #        }
+    #    }
+    #    Write-host "Marked up requestor: " $accessPackagePolicy.requestorSettings.allowedRequestors
+}
+function markupoDataEntries($Object) {
+    ForEach ($entry in $Object) {
+        switch ($entry.'@odata.type') {
+            "#microsoft.graph.groupMembers" {
+                $grp =  Get-AzureADGroup -SearchString "$($entry.description)"
+                $entry.id = $grp.ObjectId  
+            }
+            "#microsoft.graph.singleUser" {
+                $usr = Get-AzureADUser -SearchString "$($entry.description)"
+                $entry.id = $usr.ObjectId
+                $entry.description = $user.DisplayName
+            }
+            #"#microsoft.graph.requestorManager" {  
+            #}
+            default {
+                Write-host "Unknown odata.type" $entry.'@odata.type'
             }
         }
     }
 
+    #if ($Object -is [array]) {
+        return , $Object
+    #} else {
+       # return @($object)
+    #}
 }
 
 function invokeGraphAPI($Call, $Body, $Method) {
@@ -646,6 +850,12 @@ if ($processPIM) {
 
 #ListRoles("209b9ca1-4809-4907-a4a6-f2cec5a24459")
 
+#$accessPackage = New-Object psobject
+#Add-Member -InputObject $accessPackage -MemberType NoteProperty -Name displayName -Value "Jaguar Team Access Policy"
+#Add-Member -InputObject $accessPackage -MemberType NoteProperty -Name id -Value "123-aaa"
+#$accesspolicies = $organisation.EntitlementManagement.AccessPackagePolicies
+#$accesspolicies[2].requestorsettings
+#loadAccessPackagePolicies($accessPackage)
 
 Get-AzCachedAccessToken
 
