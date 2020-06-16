@@ -1,32 +1,36 @@
 
 #TODO B2B
+#TO FIX SHAREPOINT SITES!
 #TODO Conditional Access Policies
 #TODO Add JSON as script parameter
 #TODO Add flags as parameter default run all unless flags list which to run
 #TODO Add Breakglass accounts with alerts for logons
-#TODO Random password generator, one per run echo out at the end to replace the stored one in the code
 #TODO for all items check if exist if then get ids and carry on rather than erroring and failing to pass info
+#TODO Check reponse codes to make sure they are 200s
+#TODO Add Licence SKU to JSON
+
 #Cload App Security integration for alerts
-$DebugPreference = "Continue"
+#$DebugPreference = "Continue"
 
 #Import-Module -Name AzureADPreview
 #Import-Module -Name Az
 #Import-Module -Name Microsoft.graph
 
-$processDepartments = $false
-$processApplications = $false
-$processCustomRoles = $false
-$processGroups = $false
+$processDepartments = $true
+$processApplications = $true
+$processCustomRoles = $true
+$processGroups = $true
 $processEntitlements = $true
-$processPIM = $false
+$processPIM = $true
 
 $OutputLogFile = ".\objects.csv"
 $JSONToLoad = ".\test.json"
 $UserLicenceSKU = "DEVELOPERPACK_E5"
-
+$NewUserPassword = ([System.Web.Security.Membership]::GeneratePassword(12,2))
 
 function initOutputFile() {
-    Set-Content -Path $OutputLogFile -Value "ObjectType,ObjectId,Name"
+    #ToDo need to think about asking people if they want re-initilise this file.  Decided to just keep appending for now so we can clear up across runs.
+    Add-Content -Path $OutputLogFile -Value "ObjectType,ObjectId,Name"
 }
 
 function addOutEntry($ObjectType, $ObjectId, $Name) {
@@ -38,7 +42,7 @@ function addNewUser($User) {
     
     $PasswordProfile = New-Object -TypeName Microsoft.Open.AzureAD.Model.PasswordProfile
     $PasswordProfile.EnforceChangePasswordPolicy = $true
-    $PasswordProfile.Password = "WelcomeToTheNumber1Team!"
+    $PasswordProfile.Password = $NewUserPassword
 
     $UserDisplayName = $User.GivenName + " " + $User.Surname
     $mailNickName = $User.GivenName.ToLower() + $User.Surname.ToLower()
@@ -54,7 +58,7 @@ function addNewUser($User) {
     if ($User.ManagedBy -ne "") {
         Write-Host "Setting Manager for" $UserDisplayName " UserGUID:" $User.GUID " manager guid:" $User.ManagerGUID
         Set-AzureADUserManager -ObjectId $User.GUID -RefObjectId $User.ManagerGUID
-        write-host "ManagerGUID:" + $User.ManagerGUID
+        #write-host "ManagerGUID:" + $User.ManagerGUID
     }
     
     if ($User.IsManager) {
@@ -64,7 +68,6 @@ function addNewUser($User) {
         $RuleDescription = "Direct Reports for $($UserDisplayName)"
 
         $DirectsGroup = New-AzureADMSGroup -DisplayName $RuleDisplayName -Description $RuleDescription -MailEnabled $False -MailNickName "group" -SecurityEnabled $True -GroupTypes "DynamicMembership" -MembershipRule $MembershipRule -MembershipRuleProcessingState "On"
-        $DirectsGroup
         addOutEntry -ObjectType "group" -ObjectId $DirectsGroup.Id -Name $RuleDisplayName
     }
 
@@ -81,6 +84,11 @@ function addNewUser($User) {
     # Call the Set-AzureADUserLicense cmdlet to set the license.
     Set-AzureADUserLicense -ObjectId $User.UPN -AssignedLicenses $licenses
 
+}
+
+function removeUser($UserObjectId) {
+    Write-Debug -Message "Removing User ObjectId: $($UserObjectId)"
+    Remove-AzureADUser -ObjectId $UserObjectId
 }
 
 function loadGroups() {
@@ -116,6 +124,11 @@ function loadGroups() {
             $addMember = Add-AzureADGroupMember -ObjectId $grp.Id -RefObjectId $user.ObjectId
         }
     }
+}
+
+function removeGroup($GroupObjectId) {
+    Write-Debug -Message "Removing Group ObjectId: $($GroupObjectId)"
+    Remove-AzureADGroup -ObjectId $GroupObjectId
 }
 
 function getManagerGUID($UserObj) {
@@ -171,6 +184,7 @@ function loadCustomRoles() {
 }
 
 function removeCustomRole($roleId) {
+    Write-Debug -Message "Removing Custom Role Id: $($roleId)"
     Remove-AzRoleDefinition -Id $roleId
 }
 
@@ -203,7 +217,7 @@ function loadApp() {
         $spnDisplayName = $app.DisplayName + " SPN"
         $spn = New-AzureADServicePrincipal -AppId $eaApp.AppId
         addOutEntry -ObjectType"spn" -ObjectId $spn.ObjectId -Name $spnDisplayName
-        write-host "*** SPN Created for App $($app.DisplayName):" $spn
+        #write-host "*** SPN Created for App $($app.DisplayName):" $spn
         #Loop through and create the roles
         ForEach($role in $App.Role) {
             $role.Name = $role.Name.Replace(" ", "")
@@ -216,6 +230,11 @@ function loadApp() {
 
         
     }
+}
+
+function removeApp($AppObjectId) {
+    Write-Debug -Message "Removing Application ObjectId: $($AppObjectId)"
+    Remove-AzureADApplication -ObjectId $AppObjectId
 }
 
 function processDepartment() {
@@ -272,10 +291,15 @@ function loadEntitlementManagement() {
     #TODO AccessCatalog App
     #TODO AccessCatalog SharePoint
     #TODO AccessPackage
-    #Ensure the signed in user has PIM rights
-    #TODO Clean this up check and if not then add
-    $SignedInUser = Get-AzADUser -UserPrincipalName $accountId
-    Add-AzureADDirectoryRoleMember -ObjectId 083a4064-745c-4d9a-a523-228602931e47  -RefObjectId $SignedInUser.Id
+    #Ensure the signed in user has PIM rights (listed as required)
+
+    $PIMRoleAdmins = Get-AzureADDirectoryRoleMember -ObjectId "083a4064-745c-4d9a-a523-228602931e47"
+    $pimRoleAdminRef = $PIMRoleAdmins | Where-Object {$_.UserPrincipalName -eq $accountId}
+
+    if (-not $pimRoleAdminRef) {
+        $SignedInUser = Get-AzADUser -UserPrincipalName $accountId
+        Add-AzureADDirectoryRoleMember -ObjectId 083a4064-745c-4d9a-a523-228602931e47  -RefObjectId $SignedInUser.Id
+    }
 
     loadEntitlementManagementCatalogues -Catalogues $EntitlementManagement.Catalogues
     loadEntitlementManagementAccessPackages -AccessPackages $EntitlementManagement.AccessPackages
@@ -304,22 +328,27 @@ function loadEntitlementManagementCatalogues($Catalogues) {
             #$groupsToAdd = $catalog.Groups
             ForEach ($group in $catalogue.groups) {
                 Write-Host "Processing Groups"
-                $grp = Get-AzureADGroup -SearchString $group
-    
-                $grpBody = @{
-                    catalogId = $catalog.Id
-                    requestType = "AdminAdd"
-                    justification = ""
-                    accessPackageResource = @{
-                        displayName = $grp.DisplayName
-                        description = $grp.Description
-                        resourceType = "Group"
-                        originId = $grp.ObjectId
-                        originSystem = "AadGroup"
-                    }
-                } | ConvertTo-Json
-    
-                $catalogGroup = invokeGraphAPI -Call "beta/identityGovernance/entitlementManagement/accessPackageResourceRequests" -Body $grpBody -Method "POST"
+                $grp = Get-AzureADGroup -SearchString "$($group)"
+                
+                if ($grp) {
+                    $grpBody = @{
+                        catalogId = $catalog.Id
+                        requestType = "AdminAdd"
+                        justification = ""
+                        accessPackageResource = @{
+                            displayName = $grp.DisplayName
+                            description = $grp.Description
+                            url = "https://account.activedirectory.windowsazure.com/r?tenantId=$($tenantId)#/manageMembership?objectType=Group&objectId=$($grp.ObjectId)"
+                            resourceType = "Group"
+                            originId = $grp.ObjectId
+                            originSystem = "AadGroup"
+                        }
+                    } | ConvertTo-Json
+        
+                    $catalogGroup = invokeGraphAPI -Call "beta/identityGovernance/entitlementManagement/accessPackageResourceRequests" -Body $grpBody -Method "POST"
+                } else {
+                    Write-Warning "Unable to add Entitlement Management Catalog Group Resource as group not found.  Group: " $group
+                }
             }
             
             ForEach ($app in $catalogue.Applications) {
@@ -327,7 +356,7 @@ function loadEntitlementManagementCatalogues($Catalogues) {
                 $app = $app.Replace("'", "''")
                 $appRegistration = Get-AzureADApplication -Filter "DisplayName eq '$($app)'"
                 $appSPN = Get-AzureADServicePrincipal -SearchString "$($app)"
-                Write-Host "*** App SPN: $($appSPN) ***"
+                #Write-Host "*** App SPN: $($appSPN) ***"
                 #$app
                 $appBody = @{
                     catalogId = $catalog.Id
@@ -335,6 +364,7 @@ function loadEntitlementManagementCatalogues($Catalogues) {
                     justification = ""
                     accessPackageResource = @{
                         displayName = $app
+                        url = "https://myapps.microsoft.com/$($tenantDetail.DisplayName).onmicrosoft.com/signin.$($app)/$($appRegistration.AppId)"
                         description = "AppId: $($appRegistration.AppId)"
                         resourceType = "Application"
                         originId = $appSPN.ObjectId
@@ -361,9 +391,14 @@ function loadEntitlementManagementCatalogues($Catalogues) {
                     }
                 } | ConvertTo-Json
                 #$appBody
-                $catalogSite = invokeGraphAPI -Call "beta/identityGovernance/entitlementManagement/accessPackageResourceRequests" -Body $siteBody -Method "POST"
+                #CANNOT GOT THIS TO WORK!!
+                #$catalogSite = invokeGraphAPI -Call "beta/identityGovernance/entitlementManagement/accessPackageResourceRequests" -Body $siteBody -Method "POST"
             }
         }
+}
+
+function removeEntitlementManagementCatalogues($catalogObjectId) {
+
 }
 
 function loadEntitlementManagementAccessPackages($AccessPackages) {
@@ -371,12 +406,8 @@ function loadEntitlementManagementAccessPackages($AccessPackages) {
         #Need to first create access package
         #Then add a scope request to entry in the catalogue https://docs.microsoft.com/en-us/graph/api/accesspackage-post-accesspackageresourcerolescopes?view=graph-rest-beta&tabs=http
         $catalogs = invokeGraphAPI -call "beta/identityGovernance/entitlementManagement/accessPackageCatalogs" -Body "" -Method "GET" | ConvertFrom-Json
-        #Write-host "Catalogs: " $catalogs
         $catalogs = $catalogs.value 
-        Write-host "Catalogs: " $catalogs
-        Write-host "Pkg catalogue: " $accessPkg.Catalogue
         $catalogs = $catalogs | Where-Object {$_.displayName -eq "$($accessPkg.Catalogue)"}
-        Write-host "Catalog post where : " $catalogs
 
         $pkgBody = @{
             catalogId = "$($catalogs.Id)"
@@ -384,15 +415,10 @@ function loadEntitlementManagementAccessPackages($AccessPackages) {
             description = "$($accessPkg.description)"
         } | ConvertTo-Json
 
-        write-host "Pkgbody: " $pkgBody
         $accessPkgResponse = invokeGraphAPI -call "beta/identityGovernance/entitlementManagement/accessPackages" -Body $pkgBody -Method "POST"
 
-        write-host "Pkg response: " $accessPkgResponse
         #for fuller policy example look here https://docs.microsoft.com/en-us/graph/api/accesspackageassignmentpolicy-post?view=graph-rest-beta&tabs=http
 
-        #Load the access package policy into an object to work on
-        #$accessPackagePolicyDef = $accessPackagePolicies | Where-Obbject {$_.Name -eq $accessPkg.PolicyName}
-        #$accessPackagePolicy = $accessPackagePolicies | Where-Object {$_.PolicyName -eq $accessPkg.displayName}
         #Add in the id of the newly created package
         $accessPkg | Add-Member -MemberType NoteProperty -Name "id" -Value $accessPkgResponse.id        
         #Get a list of resources in the catalog
@@ -400,52 +426,32 @@ function loadEntitlementManagementAccessPackages($AccessPackages) {
         $catalogResources = $catalogResources.value
 
         Foreach($pkgGroup in $accessPkg.Groups) {
-            #$groupCatalogEntry = $catalogResources | Where-Object {$_.DisplayName -eq "$($pkgGroup.Name)" -and $_.originSystem -eq "AadGroup"}
-            ##Get a list of resource roles in the catalog
-            #$groupResourceRoles = invokeGraphAPI -call "beta/identityGovernance/entitlementManagement/accessPackageCatalogs/$($catalogs.Id)/accessPackageResourceRoles?`$filter=(originSystem+eq+%27AadGroup%27+and+accessPackageResource/id+eq+%27$($groupCatalogEntry.Id)%27)&`$expand=accessPackageResource" -body "" -Method "GET" | ConvertFrom-JSON
-            #$groupResourceRoles = $groupResourceRoles.value
-            #$groupRoleToAdd = $groupResourceRoles | Where-Object {$_.displayName -eq "$($pkgGroup.Role)"}
-
-            #$pgb = @{
-            #    accessPackageResourceRole = @{
-            #        originId = $groupRoleToAdd.originId
-            #        displayName = $groupRoleToAdd.dsiplayName
-            #        originSystem = $groupRoleToAdd.originSystem
-            #        accessPackageResource = @{
-            #            id = $groupCatalogEntry.id
-            #            resourceType = $groupCatalogEntry.resourceType
-            #            originId = $groupCatalogEntry.originId
-            #            originSystem = $groupCatalogEntry.originSystem
-            #        }
-            #    }
-            #    accessPackageResourceScope = @{
-            #        originId = $groupCatalogEntry.originId
-            #        originSystem = $groupCatalogEntry.originSystem
-            #    }
-            #} | ConvertTo-Json
             $groupRole = buildAccessPackageRole -packageName $pkgGroup.Name -packageRole $pkgGroup.Role -resourceType "AadGroup" -catalogId $catalogs.Id -catalogResourcesList $catalogResources
-            #$addGroupResponse = invokeGraphAPI -Call "beta/identityGovernance/entitlementManagement/accessPackages/$($accessPkgResponse.id)/accessPackageResourceRoleScopes" -Body $pgb -Method "POST"
             $addGroupResponse = invokeGraphAPI -Call "beta/identityGovernance/entitlementManagement/accessPackages/$($accessPkgResponse.id)/accessPackageResourceRoleScopes" -Body $groupRole -Method "POST"
         }
 
         Foreach($pkgApp in $accessPkg.Applications) {
             $appRole = buildAccessPackageRole -packageName $pkgApp.Name -packageRole $pkgApp.Role -resourceType "AadApplication" -catalogId $catalogs.Id -catalogResourcesList $catalogResources
             $addAppResponse = invokeGraphAPI -Call "beta/identityGovernance/entitlementManagement/accessPackages/$($accessPkgResponse.id)/accessPackageResourceRoleScopes" -Body $appRole -Method "POST"
-            Write-Host "aadAppResponse: " $addAppResponse
+            #Write-Host "aadAppResponse: " $addAppResponse
         }
-
 
         loadAccessEntitlementManagementAccessPackagePolicies -AccessPackage $accessPkg
     }
 }
 
+function removeAccessPackage($AccessPackageObjectId) {
+
+}
+
 function buildAccessPackageRole($packageName, $packageRole, $resourceType, $catalogId, $catalogResourcesList) {
-    write-host "Package Name: $($packageName), Package Role: $($packageRole), Resource Type: $($resourceType), Cat Id: $($catalogId), Cat Res: $($catalogResourcesList)"
+    #write-host "Package Name: $($packageName), Package Role: $($packageRole), Resource Type: $($resourceType), Cat Id: $($catalogId), Cat Res: $($catalogResourcesList)"
     $catalogEntry = $catalogResourcesList | Where-Object {$_.DisplayName -eq "$($packageName)" -and $_.originSystem -eq "$($resourceType)"}
 
     $resourceRole = invokeGraphAPI -call "beta/identityGovernance/entitlementManagement/accessPackageCatalogs/$($catalogId)/accessPackageResourceRoles?`$filter=(originSystem+eq+%27$($resourceType)%27+and+accessPackageResource/id+eq+%27$($catalogEntry.Id)%27)&`$expand=accessPackageResource" -body "" -Method "GET" | ConvertFrom-JSON
     $resourceRole = $resourceRole.value
-    #write-host "Resource Role:" $resourceRole 
+
+    #When loading the roles Graph strips the spaces so remove the spaces from the role name to locate it
     $packagerole = $packageRole.Replace(" ","")
     $resourceRoleToAdd = $resourceRole | Where-Object {$_.DisplayName -eq "$($packageRole)"}
 
@@ -512,33 +518,6 @@ function loadAccessEntitlementManagementAccessPackagePolicies($accessPackage) {
     $accessPackagePolicy = $accessPackagePolicy | ConvertTo-Json -Depth 100
     
     $response = invokeGraphAPI -Call "beta/identityGovernance/entitlementManagement/accessPackageAssignmentPolicies" -Body $accessPackagePolicy -Method "POST"
-    
-    Write-Host "Policy response:" $response
-    #Find group references and based on description (= group name) locate and replace Ids
-    #For each requestor find type then description then replace the id
-    #ForEach ($requestor in $accessPackagePolicy.requestorSettings.allowedRequestors) {
-    #    switch ($requestor.'@odata.type') {
-    #        "#microsoft.graph.groupMembers" {
-    #            write-host "looking up group"
-    #            $grp =  Get-AzureADGroup -SearchString $requestor.description
-    #            $requestor.id = $grp.ObjectId  
-    #        }
-    #        "#microsoft.graph.singleUser" {
-    #            write-host "looking up user"
-    #            $usr = Get-AzureADUser - SearchString $requestor.description
-    #            $requestor.id = $usr.ObjectId
-    #            $requestor.description = $user.DisplayName
-    #            break
-    #        }
-    #        "#microsoft.graph.requestorManager" {
-    #            break
-    #        }
-    #        default {
-    #           Write-host "Unknown odata.type" $requestor.'@odata.type'
-    #            break
-    #        }
-    #    }
-    #    Write-host "Marked up requestor: " $accessPackagePolicy.requestorSettings.allowedRequestors
 }
 function markupoDataEntries($Object) {
     ForEach ($entry in $Object) {
@@ -552,35 +531,26 @@ function markupoDataEntries($Object) {
                 $entry.id = $usr.ObjectId
                 $entry.description = $user.DisplayName
             }
-            #"#microsoft.graph.requestorManager" {  
-            #}
             default {
                 Write-host "Unknown odata.type" $entry.'@odata.type'
             }
         }
     }
-
-    #if ($Object -is [array]) {
-        return , $Object
-    #} else {
-       # return @($object)
-    #}
+    return , $Object
 }
 
 function invokeGraphAPI($Call, $Body, $Method) {
     $accessToken = Get-AzCachedAccessToken
     
     $url = "https://graph.microsoft.com/$($Call)"
-    Write-Host "Url: " $url
-    Write-Host "Body: " $body
+    #Write-Host "Url: " $url
+    #Write-Host "Body: " $body
 
     if ($Method -eq "GET") {
-        $graphResponse = Invoke-WebRequest -UseBasicParsing -Headers  @{Authorization = $accessToken} -Uri $url -Method Get
+        $graphResponse = Invoke-WebRequest -UseBasicParsing -Headers  @{Authorization = $accessToken} -Uri $url -Method GET
     } else {
-        $graphResponse = Invoke-RestMethod -Headers @{Authorization = $accessToken} -Uri $url -Body $body -Method $Method -ContentType "application/json"
+        $graphResponse = Invoke-RestMethod -Headers @{Authorization = $accessToken} -Uri $url -Body $body -Method POST -ContentType "application/json"
     }
-    
-
     return $graphResponse
 }
 
@@ -596,9 +566,14 @@ function loadPIM() {
     # Policy https://docs.microsoft.com/en-us/powershell/module/azuread/set-azureadmsprivilegedrolesetting?view=azureadps-2.0-preview
 
     #Ensure the signed in user has PIM rights
-    #TODO Clean this up check and if not then add
     $SignedInUser = Get-AzADUser -UserPrincipalName $accountId
-    Add-AzureADDirectoryRoleMember -ObjectId 083a4064-745c-4d9a-a523-228602931e47  -RefObjectId $SignedInUser.Id
+
+    $pimRoleAdmins = Get-AzureADDirectoryRoleMember -ObjectId "083a4064-745c-4d9a-a523-228602931e47"
+    $pimRoleAdminRef = $pimRoleAdmins | Where-Object {$_.UserPrincipalName -eq $accountId}
+
+    if (-not $pimRoleAdminRef) {
+        Add-AzureADDirectoryRoleMember -ObjectId 083a4064-745c-4d9a-a523-228602931e47  -RefObjectId $SignedInUser.Id
+    }
 
     $PIM = $organisation.PIM
     if ($PIM.Enrol) {
@@ -626,10 +601,13 @@ function loadPIM() {
         $roles = ListRoles($Subscription.ResourceId)
         ForEach($role in $PIM.Roles) {
             $PIMRole = $roles | Where-Object {$_.RoleName -eq $role.Name}
-            Write-Host "PIM Role: " $PIMRole
-            #$url = $serviceRoot + "roleAssignmentRequests"
-            # Update end time
-            #$ts = New-TimeSpan -Days 30
+
+            if ($PIMRole -is [array]) {
+                #This happened in testing where role was created / re-created multiple times...
+                $PIMRole = $PIMRole | Sort-Object -Property id -Descending
+                $PIMRole = $PIMRole[0]
+            }
+            
             ForEach($assignment in $role.Assignments) {
                 $groupToAdd = get-azureadmsgroup -Filter "DisplayName eq '$($assignment.GroupToAdd)'"
 
@@ -638,7 +616,7 @@ function loadPIM() {
                     break
                 }
 
-                Write-Host "Assingment: " $assignment
+                #Write-Host "Assingment: " $assignment
                 $body = @{
                     assignmentState = $assignment.Type
                     type = "AdminAdd"
@@ -652,38 +630,10 @@ function loadPIM() {
                         type = "once"
                     }
                 } | ConvertTo-JSON
-
-                #[Datetime]::ParseExact($startDate, "yyyy-mm-dd",$null).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ss.fffZ")
     
                 $reponse = invokeGraphAPI -Call "beta/privilegedAccess/azureResources/roleAssignmentRequests" -Body $body -Method "POST"
 
-                #$postParams = '{"assignmentState":"Eligible","type":"AdminAdd","reason":"Assign","roleDefinitionId":"' + $roleDefinitionId + '","resourceId":"' + $resourceId + '","subjectId":"' + $subjectId + '","schedule":{"startDateTime":"' + (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ss.fffZ") + '","endDateTime":"' + ((Get-Date) + $ts).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ss.fffZ") + '","type":"Once"}}'
-                #write-Host $postParams
-    
-                #try
-                #{
-                    #$response = Invoke-WebRequest -UseBasicParsing -Headers $headerParams -Uri $url -Method Post -ContentType "application/json" -Body $postParams
-                    #Write-Host "Assignment request queued successfully ..." -ForegroundColor Green
-                    #$recursive = $false
-                #} catch {
-                #    $stream = $_.Exception.Response.GetResponseStream()
-                #    $stream.Position = 0;
-                #    $streamReader = New-Object System.IO.StreamReader($stream)
-                #    $err = $streamReader.ReadToEnd()
-                #    $streamReader.Close()
-                #    $stream.Close()
-    
-                #    if($mfaDone -eq $false -and $err.Contains("MfaRule"))
-                #    {
-                #        Write-Host "Prompting the user for mfa ..." -ForegroundColor Green
-                #        AcquireToken $global:clientID $global:redirectUri $global:resourceAppIdURI $global:authority $true
-                #        Activate $true
-                #    }
-                #    else
-                #    {
-                #        Write-Host $err -ForegroundColor Red
-                #    }
-                #}
+                
             }   
         }
     }
@@ -693,9 +643,6 @@ function ListResources(){
     Write-Host "Loading PIM Subscribed Resources"
     $url = "beta/privilegedAccess/azureResources/resources?`$filter=(type+eq+'subscription')"
 
-    #$response = Invoke-WebRequest -UseBasicParsing -Headers $headerParams -Uri $url -Method Get
-
-    #$response = Invoke-WebRequest -UseBasicParsing -Headers $headerParams -Uri $url -Method Get
     $response = invokeGraphAPI -Call $url  -Body "" -Method "GET"
 
     $resources = ConvertFrom-Json $response.Content
@@ -720,7 +667,7 @@ function ListRoles($resourceId){
     #http://www.anujchaudhary.com/2018/02/powershell-sample-for-privileged.html
     Write-Host "Loading Roles for Subscription"
     $url = "beta/privilegedAccess/azureResources/resources/" + $resourceId + "/roleDefinitions?&`$orderby=displayName"
-    Write-Host $url
+    #Write-Host $url
 
     #$response = Invoke-WebRequest -UseBasicParsing -Headers $headerParams -Uri $url -Method Get
     $response = invokeGraphAPI -Call $url  -Body "" -Method "GET"
@@ -760,7 +707,7 @@ function Get-AzCachedAccessToken(){
     return $authResult.CreateAuthorizationHeader()
 }
 
-function createTenatBuilderApp() {
+function createTenantBuilderApp() {
     #Check if app exists and return AppId if so
     $existingApp = Get-AzureADApplication -Filter "DisplayName eq 'Tenant Builder PowerShell Script'"
 
@@ -768,9 +715,10 @@ function createTenatBuilderApp() {
         return $existingApp.AppId
     }
 
+    Write-Host "Tenant Builder App not found.  The script will create an app called Tenant Builder PowerShell Scipt, this is required for interacting with Graph.  You will be prompted to consent to the required permissions.  This is a one-time activity."
     #Create new Public Client App (required for this flow)
     $tenantBuilderApp = New-AzureADApplication -DisplayName "Tenant Builder PowerShell Script" -ReplyUrls @("https://localhost") -PublicClient $true
-
+    
     $appAccess = New-Object -TypeName "Microsoft.Open.AzureAD.Model.RequiredResourceAccess"
     #Microsoft.Graph/User.Read Delegated
     $UserRead = New-Object -TypeName "Microsoft.Open.AzureAD.Model.ResourceAccess" -ArgumentList "e1fe6dd8-ba31-4d61-89e7-88639da4683d","Scope" 
@@ -781,14 +729,25 @@ function createTenatBuilderApp() {
     #PriviledgedAccess.ReadWrite.AzureADGroup
     $PriviledgedAccessReadWriteAzureADGroup = New-Object -TypeName "Microsoft.Open.AzureAD.Model.ResourceAccess" -ArgumentList "32531c59-1f32-461f-b8df-6f8a3b89f73b","Scope"
     #PriviledgedAccess.ReadWrite.AzureResources
-    $PriviledgedAccessReadWriteAzureAResources = New-Object -TypeName "Microsoft.Open.AzureAD.Model.ResourceAccess" -ArgumentList "a84a9652-ffd3-496e-a991-22ba5529156a","Scope"
+    $PriviledgedAccessReadWriteAzureResources = New-Object -TypeName "Microsoft.Open.AzureAD.Model.ResourceAccess" -ArgumentList "a84a9652-ffd3-496e-a991-22ba5529156a","Scope"
+    #Sites.FullControl.All
+    $SitesFullControlAll = New-Object -TypeName "Microsoft.Open.AzureAD.Model.ResourceAccess" -ArgumentList "5a54b8b3-347c-476d-8f8e-42d5c7424d29","Scope"
     
-    $appAccess.ResourceAccess = $UserRead,$EntitlementManagementReadWriteAll,$PriviledgedAccessReadWriteAzureAD,$PriviledgedAccessReadWriteAzureADGroup,$PriviledgedAccessReadWriteAzureAResources
+    $appAccess.ResourceAccess = $UserRead,$EntitlementManagementReadWriteAll,$PriviledgedAccessReadWriteAzureAD,$PriviledgedAccessReadWriteAzureADGroup,$PriviledgedAccessReadWriteAzureResources,$SitesFullControlAll
     $appAccess.ResourceAppId = "00000003-0000-0000-c000-000000000000" #Microsoft Graph API
-
-    Set-AzureADApplication -ObjectId $tenantBuilderApp.ObjectId -RequiredResourceAccess $appAcces
+    
+    Set-AzureADApplication -ObjectId $tenantBuilderApp.ObjectId -RequiredResourceAccess $appAccess
     
     addOutEntry -ObjectType "app" -ObjectId $tenantBuilderApp.ObjectId -Name $DepartmentDisplayName
+
+    #In my testing the consent frequently failed with app not found, pausing seems to fix this *sigh*
+    Write-Host "Sleeping for 30s for app registration to complete"
+    Start-Sleep -s 30
+
+    $proc = Start-Process -FilePath  "https://login.microsoftonline.com/$($tenantId)/oauth2/authorize?client_id=$($tenantBuilderApp.AppId)&response_type=code&redirect_uri=https%3A%2F%2Flocalhost%2Fmyapp%2F&response_mode=query&resource=&state=12345&prompt=admin_consent"
+
+    #Wait for Admin consent to be granted so that the Graph related stuff can work
+    read-host "Please consent to application and press ENTER to continue..."
     return $tenantBuilderApp.AppId
 }
 
@@ -801,6 +760,7 @@ $currentAzureContext = Get-AzContext
 $tenantId = $currentAzureContext.Tenant.Id
 $accountId = $currentAzureContext.Account.Id
 $SubscriptionId = $currentAzureContext.Subscription.Id
+$tenantDetail = Get-AzureADTenantDetail
 
 #Connect to AzureAD to enable the AzureAD Cmdlets
 Connect-AzureAD -TenantId $tenantId -AccountId $accountId
@@ -814,7 +774,7 @@ write-host "Connected to Tenant"
 $organisation = Get-Content -Raw -Path $JSONToLoad | ConvertFrom-Json
 
 #In order to play with the Graph we need an application as the PowerShell well known Id cannot perform some operations
-$tenantBuilerAppId = createTenatBuilderApp
+$tenantBuilerAppId = createTenantBuilderApp
 
 Write-Host "Loaded JSON:" $JSONToLoad
 
@@ -833,61 +793,20 @@ if ($processCustomRoles) {
     loadCustomRoles
 }
 
+if ($processGroups) {
+    loadGroups
+}
 
 if ($processEntitlements) {
     loadEntitlementManagement
-}
-
-if ($processGroups) {
-    loadGroups
 }
 
 if ($processPIM) {
     loadPIM
 }
 
-#ListResources#
-
-#ListRoles("209b9ca1-4809-4907-a4a6-f2cec5a24459")
-
-#$accessPackage = New-Object psobject
-#Add-Member -InputObject $accessPackage -MemberType NoteProperty -Name displayName -Value "Jaguar Team Access Policy"
-#Add-Member -InputObject $accessPackage -MemberType NoteProperty -Name id -Value "123-aaa"
-#$accesspolicies = $organisation.EntitlementManagement.AccessPackagePolicies
-#$accesspolicies[2].requestorsettings
-#loadAccessPackagePolicies($accessPackage)
-
-Get-AzCachedAccessToken
+Write-Host "Password for new users not this is not stored: $($NewUserPassword)"
+#Uncomment the line below to get the access token for use with Postman
+#Get-AzCachedAccessToken
 
 $DebugPreference = "SilentlyContinue"
-
-#$context = [Microsoft.Azure.Commands.Common.Authentication.Abstractions.AzureRmProfileProvider]::Instance.Profile.DefaultContext
-#$token = [Microsoft.Azure.Commands.Common.Authentication.AzureSession]::Instance.AuthenticationFactory.Authenticate($context.Account, $context.Environment, $context.Tenant.Id.ToString(), $null, [Microsoft.Azure.Commands.Common.Authentication.ShowDialog]::Never, $null, $dexResourceUrl).AccessToken
-
-
-#$headers = @{
-#	Accept = "application/json"
-#	Authorization = "Bearer $token"
-#	Host = $dexResourceHost
-#}
-
-#https://docs.microsoft.com/en-us/powershell/module/az.resources/invoke-azresourceaction?view=azps-4.1.0 
-#Invoke-azResourceAction
-#Invoke-RestMethod -Method Post -Uri "$dexResourceUrl/v1/rest/mgmt" -Body (ConvertTo-Json $createTableRequestBody) -ContentType "application/json" -Headers $headers >$null
-
-
-#$TigerOwners = New-AzureADGroup -DisplayName "Tiger Team Owners" -MailEnabled $false -SecurityEnabled $true
-#$TigerMembers = New-AzureADGroup -DisplayName "Tiger Team Members" -MailEnabled $false -SecurityEnabled $true
-#$JaguarOwners = New-AzureADGroup -DisplayName "Jaguar Team Owners" -MailEnabled $false -SecurityEnabled $true
-#$JaguarMembers = New-AzureADGroup -DisplayName "Jaguar Team Members" -MailEnabled $false -SecurityEnabled $true
-
-#$PasswordProfile = New-Object -TypeName Microsoft.Open.AzureAD.Model.PasswordProfile
-#$PasswordProfile.Password = "WelcomeToTheNumber1Team!"
-
-
-
-#$data.Where({$_.FirstName -eq 'Kevin'})
-#$data | Where-Object {$_.FirstName -eq 'Kevin'}
-
-#az ad user create --display-name "Anvi Rao" --password "WelcomeToTheNumber1Team!" --user-principal-name "mateo.garcia@egunicorn.co.uk" -PasswordProfile $PasswordProfile -AccountEnabled $true 
-                  
