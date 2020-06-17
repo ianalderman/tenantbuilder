@@ -33,5 +33,5 @@ The script will build out the following based on the supplied Organisation descr
 1. Review organisation.json file and ammend as neccessary
 2. Execute tenantbuilder.ps1
 
-##Logs##
+## Logs ##
 The script will append to objects.csv the type and object id of each object it creates.  Over time tenantsweeper.ps1 will be able to use this log to clear any created items.
