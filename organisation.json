@@ -1,66 +1,255 @@
 {
-        "upnSuffix": "@egunicorn.co.uk",
-        "Department": [
+    "upnSuffix": "@egunicorn.co.uk",
+    "Department": [
+        {
+        "Name": "Digital",
+        "Leadership": [
             {
-            "Name": "Digital",
-            "Leadership": [
+                "GivenName": "Anvi",
+                "Surname": "Rao",
+                "Title": "Head of Digitial",
+                "ManagedBy": "",
+                "IsManager": true
+            },
+            {
+                "GivenName": "Mateo",
+                "Surname": "Garcia",
+                "Title": "Lead Architect",
+                "ManagedBy": "anvi.rao",
+                "IsManager": true
+            }
+        ],
+        "ProductTeam": [
+            {
+                "Name": "Jaguar",
+                "Owner": "graham.johnson",
+                "Members": [
+                    {
+                        "GivenName": "An",
+                        "Surname": "Li",
+                        "Title": "Engineer",
+                        "ManagedBy": "mateo.garcia"
+                    }
+                ]
+            }
+        ]
+    }            
+    ],
+    "Application": [
+        {
+            "Name": "Jaguar Team App",
+            "URI": "jag.egunicorn.co.uk",
+            "Role": [
                 {
-                    "GivenName": "Anvi",
-                    "Surname": "Rao",
-                    "Title": "Head of Digitial",
-                    "ManagedBy": ""
+                    "Name": "User role",
+                    "Description": "This role is for general application users"
                 },
                 {
-                    "GivenName": "Mateo",
-                    "Surname": "Garcia",
-                    "Title": "Lead Architect",
-                    "ManagedBy": "anvi.rao"
-                },
-                {
-                    "GivenName": "Graham",
-                    "Surname": "Johnson",
-                    "Title": "Product Owner - Jaguar",
-                    "ManagedBy": "anvi.rao"
-                },
-                {
-                    "GivenName": "Susan",
-                    "Surname": "Kemp",
-                    "Title": "Product Owner - Tiger",
-                    "ManagedBy": "anvi.rao"
-                }
-            ],
-            "ProductTeam": [
-                {
-                    "Name": "Jaguar",
-                    "Owner": "graham.johnson",
-                    "Members": [
-                        {
-                            "GivenName": "An",
-                            "Surname": "Li",
-                            "Title": "Engineer",
-                            "ManagedBy": "graham.johnson"
-                        }
-                    ]
-                },
-                {
-                    "Name": "Tiger",
-                    "Owner": "susan.kemp",
-                    "Members": [
-                        {
-                            "GivenName": "Jim",
-                            "Surname": "Hill",
-                            "Title": "Architect",
-                            "ManagedBy": "susan.kemp"
-                        },
-                        {
-                            "GivenName": "Lucy",
-                            "Surname": "Hargreaves",
-                            "Title": "Engineer",
-                            "ManagedBy": "susan.kemp"
-                        }
-                    ]
+                    "Name": "Admin role",
+                    "Description": "This role is for application administration"
                 }
             ]
-        }            
+        },
+        {
+            "Name": "Travel App",
+            "URI": "travel.egunicorn.co.uk",
+            "Role": [
+                {
+                    "Name": "UserRole",
+                    "Description": "This role is for general application users"
+                },
+                {
+                    "Name": "AdminRole",
+                    "Description": "This role is for application administration"
+                },
+                {
+                    "Name": "BookingsAdminRole",
+                    "Description": "This role is for booking administrators"
+                }
+            ]
+        }
+    ],
+    "CustomRoles": [
+        {
+            "Name": "Virtual Machine Operator",
+            "Description": "Can monitor and restart virtual machines.",
+            "Actions": [
+                "Microsoft.Storage/*/read",
+                "Microsoft.Network/*/read",
+                "Microsoft.Compute/*/read",
+                "Microsoft.Compute/virtualMachines/start/action",
+                "Microsoft.Compute/virtualMachines/restart/action",
+                "Microsoft.Authorization/*/read",
+                "Microsoft.ResourceHealth/availabilityStatuses/read",
+                "Microsoft.Resources/subscriptions/resourceGroups/read",
+                "Microsoft.Insights/alertRules/*",
+                "Microsoft.Insights/diagnosticSettings/*",
+                "Microsoft.Support/*"
+            ],
+            "NotActions": [],
+            "DataActions": [],
+            "NotDataActions": [],
+            "AssignableScopes": [
+              "/subscriptions/{SubscriptionId}"
+            ] 
+        }
+    ],
+    "groups": [
+        {
+            "Name": "Jaguar VM Operators",
+            "Description": "Jaguar VM Operators",
+            "AssignRoles": [
+               "Virtual Machine Operator"
+            ],
+            "Members": [
+                
+            ]
+        }
+    ],
+    "PIM": {
+        "Enrol": true,
+        "Roles": [
+            {
+                "Name": "Virtual Machine Operator",
+                "Settings": [
+                ],
+                "Assignments": [
+                    {
+                        "Type":"Eligible",
+                        "GroupToAdd":"Jaguar VM Operators",
+                        "StartDateUTC": "2020-06-01",
+                        "EndDateUTC":  "2021-05-01"
+                    }
+                ]
+            }
         ]
+    },
+    "EntitlementManagement": {
+        "Catalogues": [
+            {
+                "Name": "Jaguar",
+                "Description": "This catalogue contains resources that are used by the Jaguar Team",
+                "ExternallyAvailable": false,
+                "Groups": ["Jaguar VM Operators"],
+                "Applications": ["Jaguar Team App","Float"],
+                "Sites":[{
+                    "Name": "Communication site",
+                    "Url": "https://egunicorn365.sharepoint.com"
+                }]
+            }
+        ],
+        "AccessPackagePolicies": [
+            {
+                "displayName": "direct",
+                "description": "direct assignments by administrator",
+                "accessReviewSettings": null,
+                "requestorSettings": {
+                  "scopeType": "NoSubjects",
+                  "acceptRequests": true,
+                  "allowedRequestors": []
+                },
+                "requestApprovalSettings": {
+                  "isApprovalRequired": false,
+                  "isApprovalRequiredForExtension": false,
+                  "isRequestorJustificationRequired": false,
+                  "approvalMode": "NoApproval",
+                  "approvalStages": []
+                }
+              },
+              {
+                "displayName": "Jaguar Team Access Policy",
+                "description": "Access Package to support Jaguar Team Members",
+                "canExtend": false,
+                "durationInDays": 365,
+                "expirationDateTime": null,
+                "requestorSettings": {
+                    "scopeType": "SpecificDirectorySubjects",
+                    "acceptRequests": true,
+                    "allowedRequestors": [
+                        {
+                            "@odata.type": "#microsoft.graph.groupMembers",
+                            "isBackup": false,
+                            "id": "",
+                            "description": "Digital Team Members"
+                        }
+                    ]
+                },
+                "requestApprovalSettings": {
+                    "isApprovalRequired": true,
+                    "isApprovalRequiredForExtension": false,
+                    "isRequestorJustificationRequired": true,
+                    "approvalMode": "SingleStage",
+                    "approvalStages": [
+                        {
+                            "approvalStageTimeOutInDays": 14,
+                            "isApproverJustificationRequired": true,
+                            "isEscalationEnabled": false,
+                            "escalationTimeInMinutes": 0,
+                            "primaryApprovers": [
+                                {
+                                    "@odata.type": "#microsoft.graph.singleUser",
+                                    "isBackup": true,
+                                    "id": "",
+                                    "description": "anvi.rao@egunicorn.co.uk"
+                                },
+                                {
+                                    "@odata.type": "#microsoft.graph.requestorManager",
+                                    "isBackup": false
+                                }
+                            ],
+                            "escalationApprovers": []
+                        }
+                    ]
+                },
+                "accessReviewSettings": {
+                    "isEnabled": true,
+                    "recurrenceType": "quarterly",
+                    "reviewerType": "Self",
+                    "startDateTime": "2020-06-10T22:59:59.998Z",
+                    "durationInDays": 25,
+                    "reviewers": []
+                }
+            }
+        ],
+        "AccessPackages": [
+            {
+                "Name": "Jaguar Team access",
+                "Description": "Provisions standard roles, applications and memberships for Jaguar Team",
+                "Catalogue": "Jaguar",
+                "PolicyName": "Jaguar Team Access Policy",
+                "Groups": [
+                    {
+                        "Name": "Jaguar VM Operators",
+                        "Role": "Member"
+                    }
+                ],
+                "Applications": [
+                    {
+                        "Name": "Jaguar Team App",
+                        "Role": "User Role"
+                    }
+                ],
+                "Sites":[]
+            },
+            {
+                "Name": "Jaguar Team Leadership access",
+                "Description": "Provisions standard roles, applications and memberships for Jaguar Leadership Team",
+                "Catalogue": "Jaguar",
+                "PolicyName": "direct",
+                "Groups": [
+                    {
+                        "Name": "Jaguar VM Operators",
+                        "Role": "Owner"
+                    }
+                ],
+                "Applications": [
+                    {
+                        "Name": "Jaguar Team App",
+                        "Role": "Admin Role"
+                    }
+                ]
+            }
+        ]
+    }
+    
 }
