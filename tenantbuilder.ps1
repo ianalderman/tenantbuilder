@@ -17,11 +17,11 @@
 #Import-Module -Name Microsoft.graph
 
 $processDepartments = $true
-$processApplications = $true
-$processCustomRoles = $true
-$processGroups = $true
-$processEntitlements = $true
-$processPIM = $true
+$processApplications = $false
+$processCustomRoles = $false
+$processGroups = $false
+$processEntitlements = $false
+$processPIM = $false
 
 $OutputLogFile = ".\objects.csv"
 $JSONToLoad = ".\test.json"
@@ -760,11 +760,11 @@ $currentAzureContext = Get-AzContext
 $tenantId = $currentAzureContext.Tenant.Id
 $accountId = $currentAzureContext.Account.Id
 $SubscriptionId = $currentAzureContext.Subscription.Id
-$tenantDetail = Get-AzureADTenantDetail
+
 
 #Connect to AzureAD to enable the AzureAD Cmdlets
 Connect-AzureAD -TenantId $tenantId -AccountId $accountId
-
+$tenantDetail = Get-AzureADTenantDetail
 #Connect to Graph to enable the Graph Cmdlets
 #Connect-Graph
 
