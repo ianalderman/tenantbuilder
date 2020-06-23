@@ -23,11 +23,23 @@
         "ProductTeam": [
             {
                 "Name": "Jaguar",
-                "Owner": "graham.johnson",
                 "Members": [
                     {
                         "GivenName": "An",
                         "Surname": "Li",
+                        "Title": "Engineer",
+                        "ManagedBy": "mateo.garcia"
+                    },
+                    {
+                        "GivenName": "Arnold",
+                        "Surname": "Potts",
+                        "Title": "Engineer",
+                        "ManagedBy": "mateo.garcia",
+                        "LicenceSKU": "DEVELOPERPACK_E5"
+                    },
+                    {
+                        "GivenName": "Violet",
+                        "Surname": "George",
                         "Title": "Engineer",
                         "ManagedBy": "mateo.garcia"
                     }

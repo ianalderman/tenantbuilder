@@ -82,7 +82,7 @@ Add-Type -AssemblyName System.Web
 
 $outputLogFile = ".\log.txt"
 $OutputObjectFile = ".\objects.csv"
-#$UserLicenceSKU = "DEVELOPERPACK_E5"
+$UserLicenceSKU = "DEVELOPERPACK_E5"
 $NewUserPassword = ([System.Web.Security.Membership]::GeneratePassword(12,2))
 $tenantBuilderAppSecret = ""
 function initOutputFile() {
@@ -168,9 +168,12 @@ function addNewUser($User) {
         if ($existingUser) {
             log -message "UPN $($User.UPN) already exists in directory, user skipped - no changes have been made for this user object.  N.B. Manager & licence information may still change" -level "Warn"
             $UserGUID = $existingUser
+            $User | add-member -Name "GUID" -Value $UserGUID.ObjectId -Type NoteProperty
+            #$User = $existingUser
         } else {
             $UserGUID = New-AzureAdUser -AccountEnabled $true -userPrincipalName $User.UPN -Department $User.Department -DisplayName $UserDisplayName -GivenName $User.GivenName -Surname $User.Surname -JobTitle $User.Title -MailNickname $mailNickName -PasswordProfile $PasswordProfile -UsageLocation $User.UsageLocation
             log -message "Created AD User for $($UserDisplayName)" -level "debug"
+            $User | add-member -Name "GUID" -Value $UserGUID.ObjectId -Type NoteProperty
             $bUsersCreated = $true
         }
         
@@ -178,11 +181,20 @@ function addNewUser($User) {
         #SkuPartNumber DEVELOPERPACK_E5
         #$UserGUID = New-GUID
 
-        $User | add-member -Name "GUID" -value $UserGUID.ObjectId -MemberType NoteProperty
         addOutEntry -ObjectType "user" -ObjectId $User.GUID -Name $UserDisplayName
 
         if ($User.ManagedBy -ne "") {
-            log -Message "Setting Manager for $($UserDisplayName)  UserGUID:$($User.GUID) manager guid:$($User.ManagerGUID)" -level "Info"
+            if (!$User.ManagerGUID) {
+                $ManagerGUID = getManagerGUID($User)
+                if (!$ManagerGUID) {
+                    $User | Add-Member -Name "ManagerGUID" -Value $ManagerGUID -MemberType NoteProperty -Force
+                } else {
+                    Throw "Unable to identify manager GUID for $($UserDisplayName) manager: $($User.ManagedBy)"
+                }
+            }
+            
+            #write-host "User: $($User)"
+            log -Message "Setting Manager for $($UserDisplayName)  UserGUID:$($UserGUID.GUID) manager guid:$($User.ManagerGUID)" -level "Info"
             $SetMgr = Set-AzureADUserManager -ObjectId $User.GUID -RefObjectId $User.ManagerGUID
             log -Message "Manager set $($UserDisplayName)  UserGUID:$($User.GUID) manager guid:$($User.ManagerGUID)" -level "Debug"
             #write-host "ManagerGUID:" + $User.ManagerGUID
@@ -210,9 +222,16 @@ function addNewUser($User) {
         $license = New-Object -TypeName Microsoft.Open.AzureAD.Model.AssignedLicense
         $licenses = New-Object -TypeName Microsoft.Open.AzureAD.Model.AssignedLicenses
 
+        if (!$User.LicenceSKU) {
+            $User | add-member -Name "LicenceSKU" -value $UserLicenceSKU -MemberType NoteProperty
+        
+        }
         # Find the SkuID of the license we want to add
-        $license.SkuId = (Get-AzureADSubscribedSku | Where-Object -Property SkuPartNumber -Value $User.LicenceSKU -EQ).SkuID
 
+        $license.SkuId = (Get-AzureADSubscribedSku | Where-Object {$_.SkuPartNumber -eq $User.LicenceSKU}).SkuID
+        if (!$license.SkuId) {
+            Throw "Unable to locate licence SKU: $($User.LicenceSKU) - is it valid?"
+        }
         # Set the Office license as the license we want to add in the $licenses object
         $licenses.AddLicenses = $license
 
