@@ -16,7 +16,8 @@
                 "Surname": "Garcia",
                 "Title": "Lead Architect",
                 "ManagedBy": "anvi.rao",
-                "IsManager": true
+                "IsManager": true,
+                "UsageLocation": "ES"
             }
         ],
         "ProductTeam": [
@@ -39,6 +40,7 @@
         {
             "Name": "Jaguar Team App",
             "URI": "jag.egunicorn.co.uk",
+            "ReplyURI": "https://jag.egunicorn.co.uk/reply",
             "Role": [
                 {
                     "Name": "User role",
@@ -103,6 +105,28 @@
             ],
             "Members": [
                 
+            ]
+        }
+    ],
+    "AdministrativeUnit": [
+        {
+            "Name": "Jaguar",
+            "Description": "Administrative unit for devolving Jaguar User administration",
+            "Users": ["an.li@egunicorn.co.uk"],
+            "Groups": ["Digital Team Members"],
+            "Roles": [
+                {
+                    "Role": "User Account Administrator",
+                    "Users": [
+                        "anvi.rao@egunicorn.co.uk"
+                    ]
+                },
+                {
+                    "Role": "Guest Inviter",
+                    "Users": [
+                        "an.li@egunicorn.co.uk"
+                    ]
+                }
             ]
         }
     ],

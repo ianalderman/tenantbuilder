@@ -32,7 +32,7 @@ The script will build out the following based on the supplied Organisation descr
 2. Az PowerShell 4.2.0
 
 ## Usage ##
-1. Review organisation.json file and ammend as neccessary
+1. Review organisation.json file and ammend as neccessary - as a minimum you MUST change the "upnSuffix" value to a valid one in your organisation 
 2. At the top of the tenantbuilder.ps1 script there are a number of flags which determin what is built out - set these as required.
 3. Execute tenantbuilder.ps1
 
@@ -42,3 +42,4 @@ The script will append to objects.csv the type and object id of each object it c
 ## Known Issues ##
 1. If executing from the Integrated Shell in VS Code the logon window will appear behind VS Code
 2. SharePoint sites will not add to access packages / catalogs
+3. This requires a native cloud domain (non-federated)
