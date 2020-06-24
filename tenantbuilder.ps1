@@ -1276,16 +1276,18 @@ function loadAdministrativeUnits{
                         Throw "Roles for Administrative units need a role name and users supplied"
                     }
                     $SupportedRoles = @("Authentication Administrator", "Groups Administrator","Helpdesk Administrator", "License Administrator", "Password Administrator", "User Account Administrator")
-
+                    $bSkip = $false
+                    
                     if (!$SupportedRoles.contains($role.Role)) {
-                        Throw "Administrative units does not support role $($role.role), onlya limited number of roles are supported please see https://docs.microsoft.com/en-us/azure/active-directory/users-groups-roles/roles-admin-units-assign-roles"
+                        log -message "Administrative units does not support role $($role.role), only a limited number of roles are supported please see https://docs.microsoft.com/en-us/azure/active-directory/users-groups-roles/roles-admin-units-assign-roles" -level "Error"
+                        $bSkip = $true
                     }
                     
                     
                     checkAzureADRoleEnabled($role.role)
                     $roleDef = Get-AzureADDirectoryRole | Where-Object {$_.DisplayName -eq $role.Role}
                     
-                    $bSkip = $false
+                    
                     if (!$roleDef) {
                         log -message "Unable to find requested role: $($role.Role) for Administrative Unit: $($AU.Name), skipping" -level "Warn"
                         $bSkip = $true
