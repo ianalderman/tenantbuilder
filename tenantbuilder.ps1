@@ -26,7 +26,7 @@ if ($ProcessAll) {
     $processAdministrativeUnits = $true
 } else {
     if ($ProcessOnly -eq "") {
-        Write-Host "You must supply either ProcessAll=true or a comma seperated list of areas to process - Departments, Applications, CustomRoles, Groups, Entitlements, PIM"
+        Write-Host "You must supply either ProcessAll=true or a comma seperated list of areas to process - Departments, Applications, CustomRoles, Groups, Entitlements, PIM,AdministrativeUnits"
         Exit
     } else {
         $processThese = $ProcessOnly.Split(",")
@@ -69,22 +69,7 @@ if ($logLevel -gt 2) {
 #TODO Terms of use?
 #Cload App Security integration for alerts
 #$DebugPreference = "Continue"
-Write-Host "Importing modules..."
-Import-Module -Name AzureADPreview -MinimumVersion 2.0.2.102
-Import-Module -Name Az -MinimumVersion 4.2.0
-Write-Host "Modules loaded"
-#Import-Module -Name Microsoft.graph
-Add-Type -AssemblyName System.Web
 
-#$logLevel = 3 #1 = Warn, 2= Info 3 = Debug
-
-
-
-$outputLogFile = ".\log.txt"
-$OutputObjectFile = ".\objects.csv"
-$UserLicenceSKU = "DEVELOPERPACK_E5"
-$NewUserPassword = ([System.Web.Security.Membership]::GeneratePassword(12,2))
-$tenantBuilderAppSecret = ""
 function initOutputFile() {
     #ToDo need to think about asking people if they want re-initilise this file.  Decided to just keep appending for now so we can clear up across runs.
     Add-Content -Path $OutputObjectFile -Value "ObjectType,ObjectId,Name"
@@ -1423,6 +1408,66 @@ function createTenantBuilderApp() {
     
 }
 
+#https://stackoverflow.com/questions/28740320/how-do-i-check-if-a-powershell-module-is-installed
+# See https://www.powershellgallery.com/ for module and version info
+Function Install-ModuleIfNotInstalled(
+    [string] [Parameter(Mandatory = $true)] $moduleName,
+    [string] $minimalVersion
+) {
+    $module = Get-Module -Name $moduleName -ListAvailable |`
+        Where-Object { $null -eq $minimalVersion -or $minimalVersion -ge $_.Version } |`
+        Select-Object -Last 1
+    if ($null -ne $module) {
+         Write-Verbose ('Module {0} (v{1}) is available.' -f $moduleName, $module.Version)
+    }
+    else {
+        Import-Module -Name 'PowershellGet'
+        $installedModule = Get-InstalledModule -Name $moduleName -ErrorAction SilentlyContinue
+        if ($null -ne $installedModule) {
+            Write-Verbose ('Module [{0}] (v {1}) is installed.' -f $moduleName, $installedModule.Version)
+        }
+        if ($null -eq $installedModule -or ($null -ne $minimalVersion -and $installedModule.Version -lt $minimalVersion)) {
+            Write-Verbose ('Module {0} min.vers {1}: not installed; check if nuget v2.8.5.201 or later is installed.' -f $moduleName, $minimalVersion)
+            #First check if package provider NuGet is installed. Incase an older version is installed the required version is installed explicitly
+            if ((Get-PackageProvider -Name NuGet -Force).Version -lt '2.8.5.201') {
+                Write-Warning ('Module {0} min.vers {1}: Install nuget!' -f $moduleName, $minimalVersion)
+                Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Scope CurrentUser -Force
+            }        
+            $optionalArgs = New-Object -TypeName Hashtable
+            if ($null -ne $minimalVersion) {
+                $optionalArgs['RequiredVersion'] = $minimalVersion
+            }  
+            Write-Warning ('Install module {0} (version [{1}]) within scope of the current user.' -f $moduleName, $minimalVersion)
+            Install-Module -Name $moduleName @optionalArgs -Scope CurrentUser -Force -Verbose
+        } 
+    }
+}
+
+
+try {
+    Write-Host "Importing modules..."
+    Install-ModuleIfNotInstalled -moduleName "AzureADPreview" -minimalVersion "2.0.2.102"
+    Install-ModuleIfNotInstalled -moduleName "Az" -minimalVersion "4.2.0"
+    Write-Host "Modules loaded"
+} catch {
+    Throw "Unable to load required modules"
+}
+#Import-Module -Name AzureADPreview -MinimumVersion 2.0.2.102
+
+#Import-Module -Name Az -MinimumVersion 4.2.0
+
+#Import-Module -Name Microsoft.graph
+Add-Type -AssemblyName System.Web
+
+#$logLevel = 3 #1 = Warn, 2= Info 3 = Debug
+
+
+
+$outputLogFile = ".\log.txt"
+$OutputObjectFile = ".\objects.csv"
+$UserLicenceSKU = "DEVELOPERPACK_E5"
+$NewUserPassword = ([System.Web.Security.Membership]::GeneratePassword(12,2))
+$tenantBuilderAppSecret = ""
 log -message "Script Starting" -level "Info"
 #Connect to Azure to enable AZ cmdlets and set up globals
 Write-Host "Requesting Login to Azure"

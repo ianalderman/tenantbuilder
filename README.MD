@@ -39,6 +39,8 @@ The script will build out the following based on the supplied Organisation descr
 ## Logs ##
 The script will append to objects.csv the type and object id of each object it creates.  Over time tenantsweeper.ps1 will be able to use this log to clear any created items.
 
+A log of all activity will be kept in log.txt
+
 ## Known Issues ##
 1. If executing from the Integrated Shell in VS Code the logon window will appear behind VS Code
 2. SharePoint sites will not add to access packages / catalogs
