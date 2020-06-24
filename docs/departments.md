@@ -24,6 +24,7 @@ When creating users for both the ````Leadership```` and ````ProductTeam````secti
 - Manager (if set)
 - Usage Location (defaults to GB if not supplied)
 - Licence (defaults to DEVELOPERPACK_E5 if not supplied)
+- Random password (shared across all users for the script run)
 
 ## Technical Detail ##
 

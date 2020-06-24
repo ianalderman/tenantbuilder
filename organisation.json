@@ -112,9 +112,21 @@
         {
             "Name": "Jaguar VM Operators",
             "Description": "Jaguar VM Operators",
-            "AssignRoles": [
+            "AssignAzureRoles": [
                "Virtual Machine Operator"
             ],
+            "AssignADRoles": ["Guest Inviter"],
+            "Members": [
+                
+            ]
+        },
+        {
+            "Name": "Guest Managers",
+            "Description": "Can invite guests",
+            "AssignAzureRoles": [
+               
+            ],
+            "AssignADRoles": ["Guest Inviter"],
             "Members": [
                 
             ]

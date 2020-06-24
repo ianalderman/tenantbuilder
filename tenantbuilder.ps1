@@ -251,9 +251,13 @@ function loadGroups() {
                 addOutEntry -ObjectType "group" -objectId $grp.Id -Name $group.name
                 log -message "Group $($group.name) created" -level "Info"
  
-                ForEach($role in $group.AssignRoles) {
-                    #$roleDef = Get-AzRoleDefinition -Name $role
-                
+                ForEach($role in $group.AssignAzureRoles) {
+                    $roleDef = Get-AzRoleDefinition -Name $role
+                    
+                    if (!$roleDef) {
+                        Throw "Requested role is not a valid Azure Role: $($role)"
+                    }
+
                     $retryCount = 1
                     do {
                         try {
@@ -271,6 +275,11 @@ function loadGroups() {
                     if ($retryCount -gt 5) {
                         log -message "Unable to assign $($grp.Name) to role $($role)" -level "Error"
                     }
+                }
+
+                ForEach ($role in $group.AssignADRoles) {
+                    checkAzureADRoleEnabled($role)
+                    
                 }
 
                 ForEach($member in $group.members) {
@@ -1263,6 +1272,12 @@ function loadAdministrativeUnits{
                     if (!$role.Role -or !$role.Users) {
                         Throw "Roles for Administrative units need a role name and users supplied"
                     }
+                    $SupportedRoles = @("Authentication Administrator", "Groups Administrator","Helpdesk Administrator", "License Administrator", "Password Administrator", "User Account Administrator")
+
+                    if (!$SupportedRoles.contains($role.Role)) {
+                        Throw "Administrative units does not support role $($role.role), onlya limited number of roles are supported please see https://docs.microsoft.com/en-us/azure/active-directory/users-groups-roles/roles-admin-units-assign-roles"
+                    }
+                    
                     
                     checkAzureADRoleEnabled($role.role)
                     $roleDef = Get-AzureADDirectoryRole | Where-Object {$_.DisplayName -eq $role.Role}
@@ -1273,16 +1288,31 @@ function loadAdministrativeUnits{
                         $bSkip = $true
                     }
 
+                    $existingAssignments = Get-AzureADScopedRoleMembership -ObjectId $AUObjectId | Where-Object {$_.RoleObjectId -eq "$($roleDef.ObjectId)"}
+
                     if (!$bSkip) {
                         ForEach($User in $role.Users) {
-                            $Userobject = Get-AzureADUser -SearchString $User
-                            if (!$UserObject) {
-                                AUObjectId
-                                $RoleMember = New-Object -TypeName Microsoft.Open.AzureAD.Model.RoleMemberInfo
-                                $RoleMember.ObjectId = $UserObject.ObjectID
-                                $NewMembership = Add-AzureADScopedRoleMembership -ObjectId $AUObjectId -RoleObjectId $roleDef.ObjectId -RoleMemberInfo $RoleMember
-                                addOutEntry -ObjectType "aurole" -ObjectId $NewMembership.AdministrativeUnitObjectId + "," + $NewMembership.RoleObjectId -Name ""
-                                log -message "User $($User) added to role $(role.role) for Administrative Unit $($AU.Name)" -level "Info"
+                            $UserObject = Get-AzureADUser -SearchString $User
+                            if ($Userobject) {
+                                if ($existingAssignments) {
+                                    #Check user is not already assigned
+                                    $thisUserAssignment = $existingAssignments.rolememberinfo | Where-Object {$_.UserPrincipalName -eq "$($User)"}
+                                    if ($thisUserAssignment) {
+                                        log -message "User $($User) already assigned to $($role.role) for Administrative Unit $($AU.Name), skipping" -level "Warn"
+                                        $bSkip = $true
+                                    }
+                                    
+                                }
+
+                                if (!$bSkip) {
+                                    $RoleMember = New-Object -TypeName Microsoft.Open.AzureAD.Model.RoleMemberInfo
+                                    $RoleMember.ObjectId = $UserObject.ObjectID
+                                    $NewMembership = Add-AzureADScopedRoleMembership -ObjectId $AUObjectId -RoleObjectId $roleDef.ObjectId -RoleMemberInfo $RoleMember
+                                    addOutEntry -ObjectType "aurole" -ObjectId $NewMembership.AdministrativeUnitObjectId + "," + $NewMembership.RoleObjectId -Name ""
+                                    log -message "User $($User) added to role $($role.role) for Administrative Unit $($AU.Name)" -level "Info"
+                                }
+                            } else {
+                                log -message "Unable to retrieve user $($User) they will not be added to role $($role.role)" -level "Warn"
                             }
                         }
                     }
