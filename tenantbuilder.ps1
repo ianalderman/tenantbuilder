@@ -1447,7 +1447,9 @@ Function Install-ModuleIfNotInstalled(
 try {
     Write-Host "Importing modules..."
     Install-ModuleIfNotInstalled -moduleName "AzureADPreview" -minimalVersion "2.0.2.102"
-    Install-ModuleIfNotInstalled -moduleName "Az" -minimalVersion "4.2.0"
+    #Install-ModuleIfNotInstalled -moduleName "Az" -minimalVersion "4.2.0"
+    Install-ModuleIfNotInstalled -moduleName "Az.Resources" -minimalVersion "2.1.0"
+    Install-ModuleIfNotInstalled -moduleName "Az.Accounts" -minimalVersion "1.8.1"
     Write-Host "Modules loaded"
 } catch {
     Throw "Unable to load required modules"
