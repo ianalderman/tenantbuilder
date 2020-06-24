@@ -279,7 +279,7 @@ function loadGroups() {
 
                 ForEach ($role in $group.AssignADRoles) {
                     checkAzureADRoleEnabled($role)
-                    
+
                 }
 
                 ForEach($member in $group.members) {
@@ -969,6 +969,9 @@ function markupoDataEntries($Object) {
                 $usr = Get-AzureADUser -SearchString "$($entry.description)"
                 $entry.id = $usr.ObjectId
                 $entry.description = $user.DisplayName
+            }
+            "#microsoft.graph.requestorManager" {
+                
             }
             default {
                 Write-host "Unknown odata.type" $entry.'@odata.type'
