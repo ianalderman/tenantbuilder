@@ -162,7 +162,7 @@
                 "Description": "This catalogue contains resources that are used by the Jaguar Team",
                 "ExternallyAvailable": false,
                 "Groups": ["Jaguar VM Operators"],
-                "Applications": ["Jaguar Team App","Float"],
+                "Applications": ["Jaguar Team App"],
                 "Sites":[{
                     "Name": "Communication site",
                     "Url": "https://egunicorn365.sharepoint.com"
