@@ -26,6 +26,36 @@ When creating users for both the ````Leadership```` and ````ProductTeam````secti
 - Licence (defaults to DEVELOPERPACK_E5 if not supplied)
 - Random password (shared across all users for the script run)
 
+## Licences ##
+The script can assign licences to users as part of provisioning which is required for certain functionality.  There are two ways to assign licences:
+
+In the JSON section for Department add a ````LicenceSKU```` entry e.g.:
+
+````
+"Department": [
+        {
+        "Name": "Digital",
+        "LicenceSKU": "DEVELOPER_E5"
+        ...
+````
+
+Alternatively against an individual team member you can add a ````LicenceSKU```` entry e.g,:
+````
+{
+    "GivenName": "Arnold",
+    "Surname": "Potts",
+    "Title": "Engineer",
+    "ManagedBy": "mateo.garcia",
+    "LicenceSKU": "AAD_PREMIUM_P2"
+}
+````
+
+This allows you to have a default licence for the whole department which you can override on a per user basis, or only apply licences to certain users.  In order to identify the available SKUs in your subscription you can run the command:
+
+````Get-AzureADSubscribedSKU````
+
+This will list the available licence SKUs.  Note it is the _SkuPartNumber_ column you require for the JSON file.
+
 ## Technical Detail ##
 
 ### Objects Created ###
@@ -34,4 +64,41 @@ When creating users for both the ````Leadership```` and ````ProductTeam````secti
 - Azure Active Directory Dynamic Group
 
 ### JSON Template ###
-TBC
+
+#### Department Object ###
+````
+"Department": [
+    {
+    "Name": "Digital",
+    "Leadership": [],
+    "ProductTeam": []
+]
+````
+
+Property | Required | Description
+-------- | -------- | -----------
+Name    |   Yes | Name of the department
+LicenceSKU | No | Default Licence SKU to apply to the Leadership and Product Users
+Leadership | No | One ore more *User objects* definining the Leadership team for the departments, it is expected that Managers are defined here
+Product Team | No | One or more *User objects* defining the users that form each Product Team
+
+#### User Object  ###
+
+````
+{
+    "GivenName": "Arnold",
+    "Surname": "Potts",
+    "Title": "Engineer",
+    "ManagedBy": "mateo.garcia",
+    "LicenceSKU": "DEVELOPERPACK_E5"
+}
+````
+Property | Required | Description
+-------- | -------- | -----------
+GivenName | Yes | First name of the user, e.g., Arnold
+Surname | Yes | Surname of the user, e.g., Pots
+Title | No | Job Title for the user
+ManagedBy | No | Who manages this user, in the format givenname.surname (the Organisation UPN suffix is appended automatically)
+IsManager | No  | Boolean determines if this user is configured as a manager
+LicenceSKU | No | Licence SKU, e.g., to assign to this user
+

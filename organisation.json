@@ -3,6 +3,7 @@
     "Department": [
         {
         "Name": "Digital",
+        "LicenceSKU": "DEVELOPERPACK_E5",
         "Leadership": [
             {
                 "GivenName": "Anvi",

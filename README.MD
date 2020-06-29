@@ -3,7 +3,7 @@
 ## This script has been developed for use against MSDN subscriptions and assumes Global Administrator permissions ##
 
 ## About ##
-This PowerShell script leverages the Azure, AzureAD and Graph capabilities to build out an Azure Active Directory Tenant suitable for demonstrating various Identity capabilities.  As part of the script an application called _Tenant Builder PowerShell Script_ is created which is required for Graph interactions.
+This PowerShell script leverages the Azure, AzureAD and Graph capabilities to build out an Azure Active Directory Tenant suitable for demonstrating various Identity capabilities.  As part of the script an application called _Tenant Builder PowerShell Script_ is created which is required for Graph interactions.  You will be prompted to provide Admin Consent for this application, note once you have provided consent you will be redirected to a blank page - this is expected.  
 
 The script will build out the following based on the supplied Organisation description in JSON format:
 

@@ -117,7 +117,7 @@ function log($message, $level) {
     }
 }
 
-function addNewUser($User) {
+function addNewUser($User, $Department) {
     
     try {
         if ($User.GivenName -and $User.Surname) {
@@ -143,7 +143,11 @@ function addNewUser($User) {
         }
 
         if (!$User.LicenceSKU) {
-            $User | add-member -Name "LicenceSKU" -value "DEVELOPERPACK_E5" -MemberType NoteProperty
+            if ($Department.LicenceSKU) {
+                $User | add-member -Name "LicenceSKU" -value $Department.LicenceSKU -MemberType NoteProperty
+            } else {
+                $User | add-member -Name "LicenceSKU" -value "NONE" -MemberType NoteProperty
+            }
         }
 
         $UserGUID = ""
@@ -179,7 +183,7 @@ function addNewUser($User) {
             }
             
             #write-host "User: $($User)"
-            log -Message "Setting Manager for $($UserDisplayName)  UserGUID:$($UserGUID.GUID) manager guid:$($User.ManagerGUID)" -level "Info"
+            log -Message "Setting Manager for $($UserDisplayName)  UserGUID:$($User.GUID) manager guid:$($User.ManagerGUID)" -level "Info"
             $SetMgr = Set-AzureADUserManager -ObjectId $User.GUID -RefObjectId $User.ManagerGUID
             log -Message "Manager set $($UserDisplayName)  UserGUID:$($User.GUID) manager guid:$($User.ManagerGUID)" -level "Debug"
             #write-host "ManagerGUID:" + $User.ManagerGUID
@@ -202,26 +206,24 @@ function addNewUser($User) {
             }
             
         }
-
+        #TODO Currently if no licence it will default to DEVELOPER E5 instead don't assign a licence and support a department level licence SKU
         # Create the objects we'll need to add and remove licenses
         $license = New-Object -TypeName Microsoft.Open.AzureAD.Model.AssignedLicense
         $licenses = New-Object -TypeName Microsoft.Open.AzureAD.Model.AssignedLicenses
 
-        if (!$User.LicenceSKU) {
-            $User | add-member -Name "LicenceSKU" -value $UserLicenceSKU -MemberType NoteProperty
-        
-        }
-        # Find the SkuID of the license we want to add
 
-        $license.SkuId = (Get-AzureADSubscribedSku | Where-Object {$_.SkuPartNumber -eq $User.LicenceSKU}).SkuID
-        if (!$license.SkuId) {
-            Throw "Unable to locate licence SKU: $($User.LicenceSKU) - is it valid?"
+        if ($User.LicenceSKU -ne "NONE") {
+            $license.SkuId = (Get-AzureADSubscribedSku | Where-Object {$_.SkuPartNumber -eq $User.LicenceSKU}).SkuID
+            if (!$license.SkuId) {
+                log -message "Unable to locate licence SKU: $($User.LicenceSKU) - is it valid?" -level "Error"
+            }
+            # Set the Office license as the license we want to add in the $licenses object
+            $licenses.AddLicenses = $license
+    
+            # Call the Set-AzureADUserLicense cmdlet to set the license.
+            $licenceAssignment = Set-AzureADUserLicense -ObjectId $User.UPN -AssignedLicenses $licenses
         }
-        # Set the Office license as the license we want to add in the $licenses object
-        $licenses.AddLicenses = $license
 
-        # Call the Set-AzureADUserLicense cmdlet to set the license.
-        $licenceAssignment = Set-AzureADUserLicense -ObjectId $User.UPN -AssignedLicenses $licenses
         log -message "User $($UserDisplayName) processed" -level "info"
     } catch {
         $message = "Unable to add user $($UserDisplayName) to AD.  Exception: $_"
@@ -502,7 +504,7 @@ function processDepartment() {
                     $User | add-member -Name "ManagerGUID" -value $Mgr.GUID -MemberType NoteProperty
                 }
     
-                addNewUser($User)
+                addNewUser -User $User -Department $Department
             }
     
             $Products = $Department.ProductTeam
@@ -514,7 +516,7 @@ function processDepartment() {
                     $MgrGUID = getManagerGUID($Member)
                     $Member | add-member -Name "Department" -value $Product.Name -MemberType NoteProperty
                     $Member | add-member -Name "ManagerGUID" -value $MgrGUID -MemberType NoteProperty 
-                    addNewUser($Member)
+                    addNewUser -User $Member -Department $Department
                 }
             }
         }
@@ -536,7 +538,13 @@ function loadEntitlementManagement() {
     #TODO AccessCatalog SharePoint
     #Ensure the signed in user has PIM rights (listed as required)
     try {
-        $PIMRoleAdmins = Get-AzureADDirectoryRoleMember -ObjectId "083a4064-745c-4d9a-a523-228602931e47"
+        checkAzureADRoleEnabled("Privileged Role Administrator")
+        $PIMRoleId = Get-AzureADDirectoryRole | Where-Object {$_.DisplayName -eq 'Privileged Role Administrator'}
+        if (!$PIMRoleId) {
+            Throw "Unable to identify the Privileged Role Administrator role ID"
+        }
+
+        $PIMRoleAdmins = Get-AzureADDirectoryRoleMember -ObjectId $PIMRoleId.ObjectId
         $pimRoleAdminRef = $PIMRoleAdmins | Where-Object {$_.UserPrincipalName -eq $accountId}
 
         if (-not $pimRoleAdminRef) {
@@ -604,7 +612,7 @@ function loadEntitlementManagementCatalogues($Catalogues) {
             $catalogResources =  invokeGraphAPI -Call "beta/identityGovernance/entitlementManagement/accessPackageCatalogs/$($catalog.Id)/accessPackageResources" -Method "GET" | ConvertFrom-JSON
 
             $catalogResources = $catalogResources.Value
-
+            #TODO Secrity group as member or owner
             #$groupsToAdd = $catalog.Groups
             ForEach ($group in $catalogue.groups) {
 
@@ -1502,7 +1510,7 @@ Add-Type -AssemblyName System.Web
 
 $outputLogFile = ".\log.txt"
 $OutputObjectFile = ".\objects.csv"
-$UserLicenceSKU = "DEVELOPERPACK_E5"
+
 $NewUserPassword = ([System.Web.Security.Membership]::GeneratePassword(12,2))
 $tenantBuilderAppSecret = ""
 log -message "Script Starting" -level "Info"
