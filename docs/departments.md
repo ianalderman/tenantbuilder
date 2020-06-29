@@ -70,6 +70,7 @@ This will list the available licence SKUs.  Note it is the _SkuPartNumber_ colum
 "Department": [
     {
     "Name": "Digital",
+    "LicenceSKU": "",
     "Leadership": [],
     "ProductTeam": []
 ]
