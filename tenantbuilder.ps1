@@ -1026,7 +1026,13 @@ function loadPIM() {
             Throw "Unable to retrieve signed in user details"
         }
 
-        $pimRoleAdmins = Get-AzureADDirectoryRoleMember -ObjectId "083a4064-745c-4d9a-a523-228602931e47"
+        checkAzureADRoleEnabled("Privileged Role Administrator")
+        $PIMRoleId = Get-AzureADDirectoryRole | Where-Object {$_.DisplayName -eq 'Privileged Role Administrator'}
+        if (!$PIMRoleId) {
+            Throw "Unable to identify the Privileged Role Administrator role ID"
+        }
+
+        $pimRoleAdmins = Get-AzureADDirectoryRoleMember -ObjectId $PIMRoleId.ObjectId
         if (!$pimRoleAdmins) {
             Throw "Unable to load PIM Admin Role Members"
         }
